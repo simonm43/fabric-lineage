@@ -1,0 +1,319 @@
+// =============================================================================
+// OpenLineage -> Eventhouse schema  (KQL database: lineage_eh)
+// =============================================================================
+// Raw OpenLineage RunEvents are streamed directly into OpenLineageRaw by the
+// Spark OpenLineage HTTP transport (see notebooks/lineage/00_setup_lineage.py and the
+// Spark Environment properties in the README). There is NO Eventstream.
+//
+// Functions and materialized views parse runs / datasets / table edges /
+// column edges on demand. The app reads only four of them:
+//   lin_runs(), lin_datasets(), lin_table_edges_active(), lin_column_edges_active()
+//
+// Deploy with:
+//   .execute database script <|
+//   <contents of this file>
+// =============================================================================
+
+.create-merge table OpenLineageRaw (
+    event: dynamic,
+    ingested_at: datetime
+)
+
+.alter table OpenLineageRaw policy retention "{'SoftDeletePeriod':'30.00:00:00','Recoverability':'Disabled'}"
+
+.alter table OpenLineageRaw policy streamingingestion enable
+
+.create-or-alter table OpenLineageRaw ingestion json mapping 'OpenLineageRaw_mapping'
+'['
+'  {"column":"event","Properties":{"path":"$"}}'
+']'
+
+// =============================================================================
+// Parsing functions
+// =============================================================================
+
+.create-or-alter function with (folder='lineage', docstring='OL run state transitions')
+lin_run_events() {
+    OpenLineageRaw
+    | extend
+        event_type = tostring(event.eventType),
+        event_time = todatetime(event.eventTime),
+        run_id = tostring(event.run.runId),
+        job_namespace = tostring(event.job.namespace),
+        job_name = tostring(event.job.name),
+        producer = tostring(event.producer)
+    | where isnotempty(run_id)
+    | project ingested_at, event_time, event_type, run_id, job_namespace, job_name, producer, event
+}
+
+.create-or-alter function with (folder='lineage', docstring='Run summary, one row per runId')
+lin_runs() {
+    lin_run_events()
+    | summarize
+        start_time = minif(event_time, event_type == 'START'),
+        end_time   = maxif(event_time, event_type in ('COMPLETE','FAIL','ABORT')),
+        statuses = make_set(event_type),
+        job_namespace = take_any(job_namespace),
+        job_name = take_any(job_name),
+        producer = take_any(producer)
+        by run_id
+    | extend status = case(
+        set_has_element(statuses, 'COMPLETE'), 'COMPLETE',
+        set_has_element(statuses, 'FAIL'),     'FAIL',
+        set_has_element(statuses, 'ABORT'),    'ABORT',
+        'RUNNING')
+    | project run_id, job_namespace, job_name, start_time, end_time, status, producer
+}
+
+.create-or-alter function with (folder='lineage', docstring='Dataset references from inputs/outputs')
+lin_dataset_refs() {
+    OpenLineageRaw
+    | extend run_id = tostring(event.run.runId),
+             event_time = todatetime(event.eventTime),
+             event_type = tostring(event.eventType)
+    | mv-expand io_kind = pack_array('input','output') to typeof(string)
+    | extend nodes = iff(io_kind == 'input', event.inputs, event.outputs)
+    | mv-expand node = nodes
+    | where isnotnull(node)
+    | extend
+        ds_namespace = tostring(node.namespace),
+        ds_name      = tostring(node.name),
+        facets       = node.facets
+    | project event_time, event_type, run_id, io_kind, ds_namespace, ds_name, facets, raw_node = node
+}
+
+.create-or-alter function with (folder='lineage', docstring='Latest known schema per dataset')
+lin_datasets() {
+    lin_dataset_refs()
+    | where isnotnull(facets.schema)
+    | summarize arg_max(event_time, *) by ds_namespace, ds_name
+    | mv-expand field = facets.schema.fields
+    | project ds_namespace, ds_name, last_seen = event_time,
+              column_name = tostring(field.name),
+              column_type = tostring(field.type),
+              column_description = tostring(field.description)
+}
+
+.create-or-alter function with (folder='lineage', docstring='Table-level lineage edges')
+lin_table_edges() {
+    OpenLineageRaw
+    | where tostring(event.eventType) == 'COMPLETE'
+    | extend run_id = tostring(event.run.runId),
+             event_time = todatetime(event.eventTime),
+             job_name = tostring(event.job.name),
+             inputs = event.inputs,
+             outputs = event.outputs
+    | mv-expand inp = inputs
+    | mv-expand outp = outputs
+    | where isnotnull(inp) and isnotnull(outp)
+    | project event_time, run_id, job_name,
+              src_namespace = tostring(inp.namespace),
+              src_name      = tostring(inp.name),
+              dst_namespace = tostring(outp.namespace),
+              dst_name      = tostring(outp.name)
+    | summarize arg_max(event_time, *) by run_id, src_namespace, src_name, dst_namespace, dst_name
+}
+
+.create-or-alter function with (folder='lineage', docstring='Column-level lineage edges')
+lin_column_edges() {
+    OpenLineageRaw
+    | where tostring(event.eventType) == 'COMPLETE'
+    | extend run_id = tostring(event.run.runId),
+             event_time = todatetime(event.eventTime),
+             job_name = tostring(event.job.name),
+             outputs = event.outputs
+    | mv-expand outp = outputs
+    | extend
+        dst_namespace = tostring(outp.namespace),
+        dst_name      = tostring(outp.name),
+        col_lineage   = outp.facets.columnLineage.fields
+    | where isnotnull(col_lineage)
+    | mv-expand kv = bag_keys(col_lineage) to typeof(string)
+    | extend
+        dst_column = kv,
+        field_def  = col_lineage[kv]
+    | mv-expand input_field = field_def.inputFields
+    | project event_time, run_id, job_name, dst_namespace, dst_name, dst_column,
+              src_namespace = tostring(input_field.namespace),
+              src_name      = tostring(input_field.name),
+              src_column    = tostring(input_field.field),
+              transformation = tostring(field_def.transformationType),
+              transformation_subtype = tostring(field_def.transformationSubtype)
+    | summarize arg_max(event_time, *) by run_id, dst_namespace, dst_name, dst_column,
+                                          src_namespace, src_name, src_column
+}
+
+// =============================================================================
+// Materialized views -- pre-computed on ingestion so the app's per-user queries
+// stay fast as OpenLineageRaw grows. Backfilled on first creation.
+// =============================================================================
+
+.create-or-alter materialized-view with (backfill=true, folder='lineage', docstring='One row per run')
+lin_runs_mv on table OpenLineageRaw {
+    OpenLineageRaw
+    | extend
+        run_id = tostring(event.run.runId),
+        event_type = tostring(event.eventType),
+        event_time = todatetime(event.eventTime),
+        job_namespace = tostring(event.job.namespace),
+        job_name = tostring(event.job.name),
+        producer = tostring(event.producer)
+    | where isnotempty(run_id)
+    | summarize
+        start_time    = minif(event_time, event_type == 'START'),
+        end_time      = maxif(event_time, event_type in ('COMPLETE','FAIL','ABORT')),
+        statuses      = make_set(event_type),
+        job_namespace = take_any(job_namespace),
+        job_name      = take_any(job_name),
+        producer      = take_any(producer)
+        by run_id
+}
+
+.create-or-alter materialized-view with (backfill=true, folder='lineage', docstring='Latest schema per dataset')
+lin_datasets_mv on table OpenLineageRaw {
+    OpenLineageRaw
+    | extend event_time = todatetime(event.eventTime)
+    | mv-expand io_kind = pack_array('input','output') to typeof(string)
+    | extend nodes = iff(io_kind == 'input', event.inputs, event.outputs)
+    | mv-expand node = nodes
+    | where isnotnull(node) and isnotnull(node.facets.schema)
+    | extend
+        ds_namespace = tostring(node.namespace),
+        ds_name      = tostring(node.name),
+        schema_facet = node.facets.schema
+    | summarize arg_max(event_time, schema_facet) by ds_namespace, ds_name
+}
+
+.create-or-alter materialized-view with (backfill=true, folder='lineage', docstring='Table-level lineage edges')
+lin_table_edges_mv on table OpenLineageRaw {
+    OpenLineageRaw
+    | where tostring(event.eventType) == 'COMPLETE'
+    | extend run_id     = tostring(event.run.runId),
+             event_time = todatetime(event.eventTime),
+             job_name   = tostring(event.job.name)
+    | mv-expand inp = event.inputs
+    | mv-expand outp = event.outputs
+    | where isnotnull(inp) and isnotnull(outp)
+    | project event_time, run_id, job_name,
+              src_namespace = tostring(inp.namespace),
+              src_name      = tostring(inp.name),
+              dst_namespace = tostring(outp.namespace),
+              dst_name      = tostring(outp.name)
+    | summarize arg_max(event_time, *) by run_id, src_namespace, src_name, dst_namespace, dst_name
+}
+
+.create-or-alter materialized-view with (backfill=true, folder='lineage', docstring='Column-level lineage edges')
+lin_column_edges_mv on table OpenLineageRaw {
+    OpenLineageRaw
+    | where tostring(event.eventType) == 'COMPLETE'
+    | extend run_id     = tostring(event.run.runId),
+             event_time = todatetime(event.eventTime),
+             job_name   = tostring(event.job.name)
+    | mv-expand outp = event.outputs
+    | extend
+        dst_namespace = tostring(outp.namespace),
+        dst_name      = tostring(outp.name),
+        col_lineage   = outp.facets.columnLineage.fields
+    | where isnotnull(col_lineage)
+    | mv-expand kv = bag_keys(col_lineage) to typeof(string)
+    | extend
+        dst_column = kv,
+        field_def  = col_lineage[kv]
+    | mv-expand input_field = field_def.inputFields
+    | project event_time, run_id, job_name, dst_namespace, dst_name, dst_column,
+              src_namespace = tostring(input_field.namespace),
+              src_name      = tostring(input_field.name),
+              src_column    = tostring(input_field.field),
+              transformation         = tostring(field_def.transformationType),
+              transformation_subtype = tostring(field_def.transformationSubtype)
+    | summarize arg_max(event_time, *) by run_id, dst_namespace, dst_name, dst_column,
+                                          src_namespace, src_name, src_column
+}
+
+// =============================================================================
+// Deleted-dataset tombstones -- maintained by notebooks/lineage/00_refresh_active_tables.
+// Each refresh enumerates every Lakehouse in the workspace, diffs the live tables
+// against URIs ever seen in OL events, and writes one row per *missing* (deleted)
+// URI tagged with a snapshot_id. The *_active views below hide any edge that
+// touches a tombstoned URI. New tables are visible instantly (no snapshot
+// dependency); only drops are gated on the next refresh.
+// =============================================================================
+
+.create-merge table lin_active_datasets (
+    snapshot_id: string,
+    full_uri:    string,
+    snapshot_at: datetime
+)
+
+.alter table lin_active_datasets policy retention "{'SoftDeletePeriod':'7.00:00:00','Recoverability':'Disabled'}"
+
+.alter table lin_active_datasets policy streamingingestion enable
+
+.create-or-alter table lin_active_datasets ingestion json mapping 'lin_active_datasets_mapping'
+'['
+'  {"column":"snapshot_id","Properties":{"path":"$.snapshot_id"}},'
+'  {"column":"full_uri",   "Properties":{"path":"$.full_uri"}},'
+'  {"column":"snapshot_at","Properties":{"path":"$.snapshot_at"}}'
+']'
+
+.create-merge table lin_deleted_datasets (
+    snapshot_id: string,
+    full_uri:    string,
+    snapshot_at: datetime
+)
+
+.alter table lin_deleted_datasets policy retention "{'SoftDeletePeriod':'30.00:00:00','Recoverability':'Disabled'}"
+
+.alter table lin_deleted_datasets policy streamingingestion enable
+
+.create-or-alter table lin_deleted_datasets ingestion json mapping 'lin_deleted_datasets_mapping'
+'['
+'  {"column":"snapshot_id","Properties":{"path":"$.snapshot_id"}},'
+'  {"column":"full_uri",   "Properties":{"path":"$.full_uri"}},'
+'  {"column":"snapshot_at","Properties":{"path":"$.snapshot_at"}}'
+']'
+
+.create-or-alter function with (folder='lineage', docstring='URIs of tables that no longer exist (latest tombstone snapshot)')
+lin_deleted_uris() {
+    let latest_id = toscalar(lin_deleted_datasets | summarize arg_max(snapshot_at, snapshot_id) | project snapshot_id);
+    lin_deleted_datasets
+    | where snapshot_id == latest_id
+    | project full_uri = tolower(full_uri)
+    | distinct full_uri
+}
+
+.create-or-alter function with (folder='lineage', docstring='Legacy: URIs from the latest allowlist snapshot. Prefer lin_deleted_uris().')
+lin_active_uris() {
+    let latest_id = toscalar(lin_active_datasets | summarize arg_max(snapshot_at, snapshot_id) | project snapshot_id);
+    lin_active_datasets
+    | where snapshot_id == latest_id
+    | project full_uri = tolower(full_uri)
+    | distinct full_uri
+}
+
+.create-or-alter function with (folder='lineage', docstring='Table edges with edges to deleted tables filtered out')
+lin_table_edges_active() {
+    let deleted = lin_deleted_uris();
+    lin_table_edges_mv
+    | extend src_uri = tolower(strcat(src_namespace, src_name)),
+             dst_uri = tolower(strcat(dst_namespace, dst_name))
+    | where src_uri !in (deleted) and dst_uri !in (deleted)
+    | project-away src_uri, dst_uri
+}
+
+.create-or-alter function with (folder='lineage', docstring='Column edges with edges to deleted tables filtered out')
+lin_column_edges_active() {
+    let deleted = lin_deleted_uris();
+    lin_column_edges_mv
+    | extend src_uri = tolower(strcat(src_namespace, src_name)),
+             dst_uri = tolower(strcat(dst_namespace, dst_name))
+    | where src_uri !in (deleted) and dst_uri !in (deleted)
+    | project-away src_uri, dst_uri
+}
+
+// =============================================================================
+// Ingestion auth: the OpenLineage HTTP transport authenticates with the
+// user-identity Kusto token (captured at deploy time, kept fresh by the
+// scheduled 01_refresh_openlineage_token notebook). The user already has
+// ingestor rights as the Eventhouse owner, so no extra grant is needed here.
+// =============================================================================

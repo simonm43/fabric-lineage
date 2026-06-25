@@ -1,0 +1,25 @@
+id: lineage-app
+name: lineage-app
+version: 1.0.0
+services:
+  auth:
+    enabled: true
+    fabric:
+      enabled: true
+    password:
+      enabled: false
+    expiryInMinutes: 60
+    allowedRedirectUris:
+      - http://localhost:5173
+      - https://civic-echo-4a71931875-switzerlandnorth.webapp.fabricapps.net
+  staticHosting:
+    enabled: true
+    folder: dist
+    indexDocument: index.html
+    buildCommand: npm run build:fabric
+  data:
+    enabled: false
+  storage:
+    enabled: false
+  functions:
+    enabled: false

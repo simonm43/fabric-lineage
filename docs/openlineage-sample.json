@@ -1,0 +1,218 @@
+﻿{
+    "eventTime": "2026-06-12T06:37:01.4770000Z",
+    "eventType": "COMPLETE",
+    "inputs": [
+        {
+            "facets": {
+                "dataSource": {
+                    "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                    "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/DatasourceDatasetFacet.json#/$defs/DatasourceDatasetFacet",
+                    "name": "abfss://00000000-0000-0000-0000-000000000001@onelake.dfs.fabric.microsoft.com",
+                    "uri": "abfss://00000000-0000-0000-0000-000000000001@onelake.dfs.fabric.microsoft.com"
+                },
+                "schema": {
+                    "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                    "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/SchemaDatasetFacet.json#/$defs/SchemaDatasetFacet",
+                    "fields": [
+                        {
+                            "name": "x",
+                            "type": "long"
+                        },
+                        {
+                            "name": "y",
+                            "type": "long"
+                        }
+                    ]
+                },
+                "version": {
+                    "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                    "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/DatasetVersionDatasetFacet.json#/$defs/DatasetVersionDatasetFacet",
+                    "datasetVersion": "0"
+                }
+            },
+            "inputFacets": {
+                "inputStatistics": {
+                    "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                    "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/InputStatisticsInputDatasetFacet.json#/$defs/InputStatisticsInputDatasetFacet",
+                    "size": 4884
+                }
+            },
+            "name": "/00000000-0000-0000-0000-000000000002/Tables/dbo/input",
+            "namespace": "abfss://00000000-0000-0000-0000-000000000001@onelake.dfs.fabric.microsoft.com"
+        }
+    ],
+    "job": {
+        "facets": {
+            "jobType": {
+                "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/JobTypeJobFacet.json#/$defs/JobTypeJobFacet",
+                "integration": "SPARK",
+                "jobType": "SQL_JOB",
+                "processingType": "BATCH"
+            }
+        },
+        "name": "demo_notebook_21_bd1833_6_ee1_4307_bd42_91_ad3_d65_b65_f.append_data_exec_v1.spark_catalog_output",
+        "namespace": "fabric-lineage-demo"
+    },
+    "outputs": [
+        {
+            "facets": {
+                "columnLineage": {
+                    "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                    "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/ColumnLineageDatasetFacet.json#/$defs/ColumnLineageDatasetFacet",
+                    "fields": {
+                        "sum_xy": {
+                            "inputFields": [
+                                {
+                                    "field": "y",
+                                    "name": "/00000000-0000-0000-0000-000000000002/Tables/dbo/input",
+                                    "namespace": "abfss://00000000-0000-0000-0000-000000000001@onelake.dfs.fabric.microsoft.com",
+                                    "transformations": [
+                                        {
+                                            "description": "",
+                                            "masking": false,
+                                            "subtype": "TRANSFORMATION",
+                                            "type": "DIRECT"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "field": "x",
+                                    "name": "/00000000-0000-0000-0000-000000000002/Tables/dbo/input",
+                                    "namespace": "abfss://00000000-0000-0000-0000-000000000001@onelake.dfs.fabric.microsoft.com",
+                                    "transformations": [
+                                        {
+                                            "description": "",
+                                            "masking": false,
+                                            "subtype": "TRANSFORMATION",
+                                            "type": "DIRECT"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        "x": {
+                            "inputFields": [
+                                {
+                                    "field": "x",
+                                    "name": "/00000000-0000-0000-0000-000000000002/Tables/dbo/input",
+                                    "namespace": "abfss://00000000-0000-0000-0000-000000000001@onelake.dfs.fabric.microsoft.com",
+                                    "transformations": [
+                                        {
+                                            "description": "",
+                                            "masking": false,
+                                            "subtype": "IDENTITY",
+                                            "type": "DIRECT"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        "y": {
+                            "inputFields": [
+                                {
+                                    "field": "y",
+                                    "name": "/00000000-0000-0000-0000-000000000002/Tables/dbo/input",
+                                    "namespace": "abfss://00000000-0000-0000-0000-000000000001@onelake.dfs.fabric.microsoft.com",
+                                    "transformations": [
+                                        {
+                                            "description": "",
+                                            "masking": false,
+                                            "subtype": "IDENTITY",
+                                            "type": "DIRECT"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "dataSource": {
+                    "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                    "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/DatasourceDatasetFacet.json#/$defs/DatasourceDatasetFacet",
+                    "name": "abfss://00000000-0000-0000-0000-000000000001@onelake.dfs.fabric.microsoft.com",
+                    "uri": "abfss://00000000-0000-0000-0000-000000000001@onelake.dfs.fabric.microsoft.com"
+                },
+                "schema": {
+                    "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                    "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/SchemaDatasetFacet.json#/$defs/SchemaDatasetFacet",
+                    "fields": [
+                        {
+                            "name": "x",
+                            "type": "long"
+                        },
+                        {
+                            "name": "y",
+                            "type": "long"
+                        },
+                        {
+                            "name": "sum_xy",
+                            "type": "long"
+                        }
+                    ]
+                },
+                "storage": {
+                    "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                    "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/StorageDatasetFacet.json#/$defs/StorageDatasetFacet",
+                    "fileFormat": "parquet",
+                    "storageLayer": "delta"
+                },
+                "version": {
+                    "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                    "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/DatasetVersionDatasetFacet.json#/$defs/DatasetVersionDatasetFacet",
+                    "datasetVersion": "-1"
+                }
+            },
+            "name": "/00000000-0000-0000-0000-000000000002/Tables/dbo/output",
+            "namespace": "abfss://00000000-0000-0000-0000-000000000001@onelake.dfs.fabric.microsoft.com",
+            "outputFacets": {}
+        }
+    ],
+    "producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+    "run": {
+        "facets": {
+            "environment-properties": {
+                "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                "_schemaURL": "file:/__w/1/s/client/java/../../spec/OpenLineage.json#/$defs/RunFacet",
+                "environment-properties": {}
+            },
+            "parent": {
+                "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/ParentRunFacet.json#/$defs/ParentRunFacet",
+                "job": {
+                    "name": "demo_notebook_21_bd1833_6_ee1_4307_bd42_91_ad3_d65_b65_f",
+                    "namespace": "fabric-lineage-demo"
+                },
+                "run": {
+                    "runId": "019eba88-0000-7000-8000-000000000004"
+                }
+            },
+            "processing_engine": {
+                "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                "_schemaURL": "file:/__w/1/s/client/java/../../spec/facets/ProcessingEngineRunFacet.json#/$defs/ProcessingEngineRunFacet",
+                "name": "spark",
+                "openlineageAdapterVersion": "1.26.0",
+                "version": "3.5.5.5.4.20260403.6"
+            },
+            "spark_properties": {
+                "_producer": "https://github.com/OpenLineage/OpenLineage/tree/1.26.0/integration/spark",
+                "_schemaURL": "file:/__w/1/s/client/java/../../spec/OpenLineage.json#/$defs/RunFacet",
+                "properties": {
+                    "spark.app.id": "application_1781245923762_0001",
+                    "spark.app.name": "TridentTokenLibraryPy",
+                    "spark.master": "yarn",
+                    "spark.openlineage.source": "fabric",
+                    "spark.openlineage.transport.type": "http",
+                    "spark.synapse.context.notebookname": "demo_notebook",
+                    "spark.trident.highconcurrency.enabled": "false",
+                    "trident.artifact.id": "00000000-0000-0000-0000-000000000003",
+                    "trident.artifact.name": "demo_notebook",
+                    "trident.artifact.workspace.id": "00000000-0000-0000-0000-000000000001",
+                    "trident.workspace.id": "00000000-0000-0000-0000-000000000001"
+                }
+            }
+        },
+        "runId": "019eba8c-0000-7000-8000-000000000005"
+    },
+    "schemaURL": "file:/__w/1/s/client/java/../../spec/OpenLineage.json#/$defs/RunEvent"
+}
