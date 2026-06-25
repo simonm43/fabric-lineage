@@ -64,16 +64,44 @@ The whole demo is provisioned by one PowerShell script.
 everything in it, and [scripts/teardown.ps1](scripts/teardown.ps1) removes it
 again. Both use the Azure CLI (`az`) signed-in user for all Fabric calls.
 
-**Prerequisites**
+### Prerequisites
 
-- [Azure CLI](https://learn.microsoft.com/cli/azure/) — run `az login` first.
-- PowerShell 7+ (`pwsh`, cross-platform) or Windows PowerShell 5.1.
-- A Fabric **capacity** (you pass its **name**) with the **Eventhouse** and
-  **Fabric Apps (Preview)** workloads enabled.
-- Rights to create Entra app registrations (and ideally to grant admin consent)
-  — used by the default app-registration step.
-- Node.js + the repo's `app/` dependencies — used by the default app deploy
-  (disable both with `-CreateAppRegistration:$false -DeployApp:$false`).
+**Local tooling**
+
+- [Azure CLI](https://learn.microsoft.com/cli/azure/) — sign in with `az login`
+  before running the scripts (all Fabric/Entra calls use the signed-in user).
+- **PowerShell 7+** (`pwsh`, cross-platform) or Windows PowerShell 5.1.
+- **Node.js 18+** (20 LTS recommended) + npm — required by the default app deploy
+  (`rayfin up` / Vite 6 build). The script runs `npm install` in `app/` for you.
+
+**Microsoft Fabric**
+
+- A **Fabric capacity** you can use (you pass its **name** via `-CapacityName`).
+  A trial capacity works.
+- Permission to **create workspaces** and assign them to that capacity (Capacity
+  admin/contributor, or an admin who has granted you capacity assignment rights).
+- The following tenant settings enabled by your **Fabric admin**
+  (*Admin portal → Tenant settings*):
+  - **Users can create Fabric items** (Eventhouse, Environment, Lakehouse,
+    Notebook).
+  - **Fabric Apps (Rayfin) preview / developer items** — required to host the SPA
+    via Rayfin static hosting. (The app deploy needs this; skip it with
+    `-DeployApp:$false` if your tenant doesn't have it yet.)
+  - **Real-Time Intelligence / Eventhouse** available on the capacity (on by
+    default for Fabric capacities).
+
+**Microsoft Entra (Azure AD)** — only for the optional app-registration step
+(`-CreateAppRegistration`, default on):
+
+- Rights to **register applications** in your tenant.
+- Ideally rights to **grant admin consent** for the delegated permissions the app
+  uses: Azure Data Explorer `user_impersonation`, Microsoft Graph `User.Read` +
+  `User.ReadBasic.All`, and Power BI/Fabric `Workspace.Read.All`. If you can't
+  grant consent, the script tells you to do it manually in the Entra portal.
+
+> **Minimal run.** To provision only the data + lineage backend (no Entra app, no
+> hosted SPA), add `-CreateAppRegistration:$false -DeployApp:$false`. Then only
+> the Azure CLI, PowerShell, and a Fabric capacity are needed.
 
 **Provision**
 
